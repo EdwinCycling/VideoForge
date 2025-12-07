@@ -1,0 +1,5 @@
+{
+  "name": "VideoForge PWA",
+  "description": "A powerful, offline-capable video utility app for extracting frames and stitching videos using client-side processing.",
+  "requestFramePermissions": []
+}

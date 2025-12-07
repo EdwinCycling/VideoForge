@@ -1,0 +1,9 @@
+{
+  "name": "VideoForge",
+  "short_name": "VideoForge",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#6366f1",
+  "description": "Offline-capable video utility for extracting frames and stitching videos client-side"
+}
