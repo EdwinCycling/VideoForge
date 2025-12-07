@@ -1,1 +1,9 @@
-/* Empty stylesheet to satisfy link and allow future overrides */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar override */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
