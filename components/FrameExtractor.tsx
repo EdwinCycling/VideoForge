@@ -75,7 +75,12 @@ const FrameExtractor: React.FC = () => {
         <p className="text-slate-400">Get the perfect ending shot from your video.</p>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center w-full min-h-[300px] border-2 border-dashed border-slate-700 rounded-2xl bg-slate-800/50 relative overflow-hidden transition-colors hover:border-indigo-500/50">
+      {/* Result Container */}
+      <div className={`
+        flex-1 flex flex-col items-center justify-center w-full 
+        rounded-2xl bg-slate-800/50 relative overflow-hidden transition-colors 
+        ${capturedImage ? 'border-0 bg-transparent' : 'border-2 border-dashed border-slate-700 hover:border-indigo-500/50 min-h-[300px]'}
+      `}>
         
         {/* Loading State */}
         {isLoading && (
@@ -107,11 +112,13 @@ const FrameExtractor: React.FC = () => {
 
         {/* Result State */}
         {capturedImage && !isLoading && (
-          <img 
-            src={capturedImage} 
-            alt="Captured Frame" 
-            className="max-w-full max-h-full object-contain shadow-2xl" 
-          />
+          <div className="w-full flex items-center justify-center">
+            <img 
+              src={capturedImage} 
+              alt="Captured Frame" 
+              className="w-full h-auto max-h-[60vh] object-contain shadow-2xl rounded-2xl border border-slate-700/50" 
+            />
+          </div>
         )}
       </div>
 
