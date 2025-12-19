@@ -53,23 +53,28 @@ class FFmpegService {
       if (onLog) onLog(message);
     });
 
-    // 1. Write files to memory and build concat list
+    // 1. Write files to memory
     const inputNames: string[] = [];
-    let concatList = '';
-    const ext = ((videos[0]?.file?.name || '').split('.').pop() || 'mp4').toLowerCase();
-    const mime = videos[0]?.file?.type || 'video/mp4';
+    const first = videos[0];
+    const targetW = first.width;
+    const targetH = first.height;
+    const ext = ((first.file.name || '').split('.').pop() || 'mp4').toLowerCase();
+    const mime = first.file.type || 'video/mp4';
+
+    // Check if re-encoding is needed (resolution or format mismatch)
+    const needsReencode = videos.some(v => 
+      v.width !== targetW || 
+      v.height !== targetH || 
+      v.file.type !== mime
+    );
 
     for (let i = 0; i < videos.length; i++) {
       const name = `input${i}.${ext}`;
       inputNames.push(name);
       await ffmpeg.writeFile(name, await fetchFile(videos[i].file));
-      // Concat demuxer format: file 'filename'
-      concatList += `file '${name}'\n`;
     }
-    if (onLog) onLog(`Prepared ${videos.length} inputs`);
-
-    // Write the list file
-    await ffmpeg.writeFile('filelist.txt', concatList);
+    
+    if (onLog) onLog(`Prepared ${videos.length} inputs. Re-encode: ${needsReencode}`);
 
     const outputName = `output.${ext}`;
 
@@ -78,41 +83,88 @@ class FFmpegService {
       onProgress(Math.max(0, Math.min(100, progress * 100)));
     });
 
-    // 3. Run Command: Concat Demuxer with Copy Codec
-    // -f concat: use concat demuxer
-    // -safe 0: allow reading relative paths
-    // -i filelist.txt: input list
-    // -c copy: copy streams directly (no re-encoding)
-    const command = [
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', 'filelist.txt',
-      '-c', 'copy',
-      outputName
-    ];
+    // 3. Run Command
+    let command: string[] = [];
+
+    if (!needsReencode) {
+      // FAST PATH: Concat Demuxer with Stream Copy
+      let concatList = '';
+      for (let i = 0; i < inputNames.length; i++) {
+        concatList += `file '${inputNames[i]}'\n`;
+      }
+      await ffmpeg.writeFile('filelist.txt', concatList);
+
+      command = [
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', 'filelist.txt',
+        '-c', 'copy',
+        outputName
+      ];
+      
+      if (onLog) onLog('Starting concat with stream copy (fast)');
+    } else {
+      // ROBUST PATH: Filter Complex with Scaling and Re-encoding
+      // This handles resolution mismatch and different formats
+      const inputs: string[] = [];
+      let filterComplex = '';
+      
+      for (let i = 0; i < videos.length; i++) {
+        inputs.push('-i', inputNames[i]);
+        // Scale and pad to match first video's resolution
+        filterComplex += `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}];`;
+      }
+
+      for (let i = 0; i < videos.length; i++) {
+        filterComplex += `[v${i}][${i}:a]`;
+      }
+      filterComplex += `concat=n=${videos.length}:v=1:a=1[v][a]`;
+
+      command = [
+        ...inputs,
+        '-filter_complex', filterComplex,
+        '-map', '[v]',
+        '-map', '[a]',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-c:a', 'aac',
+        outputName
+      ];
+      
+      if (onLog) onLog('Starting concat with re-encoding and scaling (robust)');
+    }
 
     try {
-      if (onLog) onLog('Starting concat with stream copy');
-      await ffmpeg.exec(command);
+      await ffmpeg.exec([...command, '-y']);
     } catch (e) {
       console.error(e);
-      throw new Error("FFmpeg execution failed. Please ensure all videos have the same format and encoding.");
+      if (needsReencode) {
+        throw new Error("Stitching failed during re-encoding. Some videos might lack audio or have incompatible streams.");
+      } else {
+        throw new Error("FFmpeg execution failed. Please ensure all videos have the same format and encoding.");
+      }
     }
 
     // 4. Read Result
+    if (onLog) onLog('Stitching complete. Reading result file...');
     let data;
     try {
        data = await ffmpeg.readFile(outputName);
     } catch (e) {
-       throw new Error("Failed to create output video. Input formats may be incompatible.");
+       console.error('ReadFile error:', e);
+       throw new Error("Failed to read the output video from memory. It might be too large or the process failed.");
     }
+    
+    if (onLog) onLog(`Result read successfully (${(data.length / (1024 * 1024)).toFixed(1)} MB). Cleaning up...`);
     
     // Cleanup files to free memory
     for (const name of inputNames) {
-      await ffmpeg.deleteFile(name);
+      try { await ffmpeg.deleteFile(name); } catch(e) {}
     }
-    await ffmpeg.deleteFile('filelist.txt');
-    await ffmpeg.deleteFile(outputName);
+    if (!needsReencode) {
+      try { await ffmpeg.deleteFile('filelist.txt'); } catch(e) {}
+    }
+    try { await ffmpeg.deleteFile(outputName); } catch(e) {}
 
     return URL.createObjectURL(new Blob([data], { type: mime }));
   }

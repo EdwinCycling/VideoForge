@@ -31,6 +31,8 @@ const VideoStitcher: React.FC = () => {
     error: null
   });
 
+  const [lastLog, setLastLog] = useState<string>('');
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), // Fix for buttons not clicking inside sortable
     useSensor(KeyboardSensor, {
@@ -44,13 +46,11 @@ const VideoStitcher: React.FC = () => {
     setStatus(prev => ({ ...prev, isProcessing: true, message: 'Analyzing videos...' }));
 
     const newFiles: VideoFile[] = [];
-    // Explicitly cast to File[] as Array.from on FileList can sometimes return unknown[] depending on TS lib
     const fileList = Array.from(e.target.files) as File[];
 
     try {
       for (const file of fileList) {
         const thumb = await generateThumbnail(file);
-        // Get metadata
         let duration = 0;
         let width = 0;
         let height = 0;
@@ -65,8 +65,6 @@ const VideoStitcher: React.FC = () => {
           console.warn("Could not load video metadata", e);
         }
 
-        // console.info('Video added', { name: file.name, type: file.type });
-        
         newFiles.push({
           id: Math.random().toString(36).substr(2, 9),
           file,
@@ -82,7 +80,6 @@ const VideoStitcher: React.FC = () => {
       setStatus(prev => ({ ...prev, error: 'Failed to load videos.' }));
     } finally {
       setStatus(prev => ({ ...prev, isProcessing: false, message: '' }));
-      // Reset input
       e.target.value = '';
     }
   };
@@ -107,60 +104,26 @@ const VideoStitcher: React.FC = () => {
       setStatus(prev => ({ ...prev, error: 'Add at least two videos to stitch.' }));
       return false;
     }
-
-    const first = videos[0];
-    const width = first.width;
-    const height = first.height;
-    const type = first.file.type;
-    const ext = (first.file.name.split('.').pop() || '').toLowerCase();
-
-    const resMismatch = videos.find(v => v.width !== width || v.height !== height);
-    if (resMismatch) {
-      setStatus(prev => ({
-        ...prev,
-        error: `Resolution mismatch. Expected ${width}x${height}. Found "${resMismatch.file.name}" with ${resMismatch.width}x${resMismatch.height}.`
-      }));
-      return false;
-    }
-
-    const typeMismatch = videos.find(v => v.file.type !== type);
-    if (typeMismatch) {
-      const types = Array.from(new Set(videos.map(v => v.file.type || 'unknown'))).join(', ');
-      setStatus(prev => ({
-        ...prev,
-        error: `Format mismatch. All videos must share the same container and encoding. Detected types: ${types}.`
-      }));
-      return false;
-    }
-
-    const extMismatch = videos.find(v => (v.file.name.split('.').pop() || '').toLowerCase() !== ext);
-    if (extMismatch) {
-      const exts = Array.from(new Set(videos.map(v => (v.file.name.split('.').pop() || '').toLowerCase()))).join(', ');
-      setStatus(prev => ({
-        ...prev,
-        error: `Extension mismatch. Inputs must have identical file extensions. Detected: ${exts}.`
-      }));
-      return false;
-    }
-
     return true;
   };
 
   const handleStitch = async () => {
     if (!validateVideos()) return;
 
+    setLastLog('');
     setStatus({ isProcessing: true, progress: 0, message: 'Preparing your video...', error: null });
-    // console.info('Stitching start');
     
     try {
       const url = await ffmpegService.stitchVideos(videos, (progress) => {
+        const p = Math.round(progress);
         setStatus(prev => ({
           ...prev, 
-          progress: Math.round(progress),
-          message: 'Merging clips...' 
+          progress: p,
+          message: p >= 100 ? 'Finalizing video...' : 'Merging clips...' 
         }));
       }, (text) => {
-        // console.debug('[Stitch]', text);
+        setLastLog(text);
+        console.debug('[FFmpeg]', text);
       });
       setResultVideoUrl(url);
     } catch (err: any) {
@@ -235,6 +198,11 @@ const VideoStitcher: React.FC = () => {
                  <div className="bg-indigo-500 h-2 transition-all duration-300" style={{ width: `${status.progress}%` }} />
                </div>
                <p className="text-slate-400 text-sm">Processing your video...</p>
+               {lastLog && (
+                 <div className="mt-4 p-2 bg-black/40 rounded text-[10px] text-slate-500 font-mono truncate max-w-xs mx-auto">
+                   {lastLog}
+                 </div>
+               )}
             </div>
          </div>
       )}
