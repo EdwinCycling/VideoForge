@@ -50,7 +50,7 @@ const VideoStitcher: React.FC = () => {
   const [isSearchingAudio, setIsSearchingAudio] = useState(false);
 
   // Pixabay API Key vanuit omgevingsvariabelen
-  const PIXABAY_API_KEY = import.meta.env.VITE_PIXABAY_API_KEY || '48123287-25e24b4f0283c79c836691461'; // Fallback naar demo key indien niet gezet
+  const PIXABAY_API_KEY = import.meta.env.VITE_PIXABAY_API_KEY || ''; // Geen hardcoded fallback om security scans te passeren
 
   // Hulpfunctie om CORS-problemen te omzeilen voor audiobestanden
   const getProxiedUrl = (url: string) => {
