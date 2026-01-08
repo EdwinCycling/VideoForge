@@ -160,7 +160,7 @@ const VideoStitcher: React.FC = () => {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-3">
           <Button 
             onClick={() => {
                 const a = document.createElement('a');
@@ -177,11 +177,20 @@ const VideoStitcher: React.FC = () => {
             variant="secondary" 
             onClick={() => {
                 setResultVideoUrl(null);
+            }} 
+            icon={<Plus size={20} />}
+          >
+            Edit
+          </Button>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+                setResultVideoUrl(null);
                 setVideos([]);
             }} 
             icon={<ArrowLeft size={20} />}
           >
-            Create New
+            New
           </Button>
         </div>
       </div>

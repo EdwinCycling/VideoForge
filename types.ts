@@ -17,6 +17,20 @@ export enum TransitionType {
   RADIAL = 'radial',
   SMOOTHLEFT = 'smoothleft',
   SMOOTHRIGHT = 'smoothright',
+  // Nieuwe "zware" overgangen
+  PIXELIZE = 'pixelize',
+  DISSOLVE = 'dissolve',
+  CIRCLEOPEN = 'circleopen',
+  CIRCLECLOSE = 'circleclose',
+  ZOOMIN = 'zoomin',
+  HLSLICE = 'hlslice',
+  HRSLICE = 'hrslice',
+  VUSLICE = 'vuslice',
+  VDSLICE = 'vdslice',
+  HBLUR = 'hblur',
+  SQUEEZEH = 'squeezeh',
+  SQUEEZEV = 'squeezev',
+  DIAGONAL = 'diagonal',
 }
 
 export interface VideoFile {

@@ -103,6 +103,23 @@ const SortableVideoItem: React.FC<Props> = ({ video, onRemove, onUpdateTransitio
               <option value={TransitionType.RADIAL}>Radiaal</option>
               <option value={TransitionType.SMOOTHLEFT}>Smooth Links</option>
               <option value={TransitionType.SMOOTHRIGHT}>Smooth Rechts</option>
+              <optgroup label="Speciale Effecten">
+                <option value={TransitionType.PIXELIZE}>Pixelize (Blokjes)</option>
+                <option value={TransitionType.DISSOLVE}>Dissolve (Oplossen)</option>
+                <option value={TransitionType.CIRCLEOPEN}>Cirkel Openen</option>
+                <option value={TransitionType.CIRCLECLOSE}>Cirkel Sluiten</option>
+                <option value={TransitionType.ZOOMIN}>Zoom In</option>
+                <option value={TransitionType.HBLUR}>Horizontale Blur</option>
+                <option value={TransitionType.DIAGONAL}>Diagonaal</option>
+              </optgroup>
+              <optgroup label="Gordijn & Slice">
+                <option value={TransitionType.HLSLICE}>Horiz. Links Slice</option>
+                <option value={TransitionType.HRSLICE}>Horiz. Rechts Slice</option>
+                <option value={TransitionType.VUSLICE}>Vert. Omhoog Slice</option>
+                <option value={TransitionType.VDSLICE}>Vert. Omlaag Slice</option>
+                <option value={TransitionType.SQUEEZEH}>Horiz. Knijpen</option>
+                <option value={TransitionType.SQUEEZEV}>Vert. Knijpen</option>
+              </optgroup>
             </select>
 
             {currentTransition.type !== TransitionType.NONE && (
