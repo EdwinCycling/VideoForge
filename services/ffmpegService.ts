@@ -86,7 +86,9 @@ class FFmpegService {
     // 3. Run Command
     let command: string[] = [];
 
-    if (!needsReencode) {
+    const hasTransitions = videos.some(v => v.transition && v.transition.type !== 'none');
+
+    if (!needsReencode && !hasTransitions) {
       // FAST PATH: Concat Demuxer with Stream Copy
       let concatList = '';
       for (let i = 0; i < inputNames.length; i++) {
@@ -104,21 +106,60 @@ class FFmpegService {
       
       if (onLog) onLog('Starting concat with stream copy (fast)');
     } else {
-      // ROBUST PATH: Filter Complex with Scaling and Re-encoding
-      // This handles resolution mismatch and different formats
+      // ROBUST PATH: Filter Complex with Scaling, Transitions, and Re-encoding
       const inputs: string[] = [];
       let filterComplex = '';
       
+      // First pass: Scale and prepare all inputs
       for (let i = 0; i < videos.length; i++) {
         inputs.push('-i', inputNames[i]);
         // Scale and pad to match first video's resolution
-        filterComplex += `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}];`;
+        filterComplex += `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v${i}];`;
       }
 
-      for (let i = 0; i < videos.length; i++) {
-        filterComplex += `[v${i}][${i}:a]`;
+      if (!hasTransitions) {
+        // Simple concat without transitions
+        for (let i = 0; i < videos.length; i++) {
+          filterComplex += `[v${i}][${i}:a]`;
+        }
+        filterComplex += `concat=n=${videos.length}:v=1:a=1[v][a]`;
+      } else {
+        // Complex xfade logic
+        let currentV = '[v0]';
+        let currentA = '[0:a]';
+        let currentOffset = 0;
+
+        for (let i = 0; i < videos.length - 1; i++) {
+          const v1 = videos[i];
+          const v2 = videos[i + 1];
+          const trans = v1.transition || { type: 'none', duration: 1 };
+          
+          // Calculate offset: cumulative duration - overlap
+          const transitionDuration = trans.type === 'none' ? 0 : trans.duration;
+          const offset = currentOffset + v1.duration - transitionDuration;
+          
+          if (trans.type === 'none' || transitionDuration <= 0) {
+            // No transition: use concat
+            filterComplex += `${currentV}[v${i+1}]concat=n=2:v=1:a=0[vtemp${i}];`;
+            filterComplex += `${currentA}[${i+1}:a]concat=n=2:v=0:a=1[atemp${i}];`;
+            currentOffset += v1.duration;
+          } else {
+            // Map our transition types to ffmpeg names
+            let ffmpegTrans = trans.type.toString();
+            if (ffmpegTrans === 'slidelt') ffmpegTrans = 'slideleft';
+            if (ffmpegTrans === 'slidert') ffmpegTrans = 'slideright';
+            
+            filterComplex += `${currentV}[v${i+1}]xfade=transition=${ffmpegTrans}:duration=${transitionDuration}:offset=${offset}[vtemp${i}];`;
+            filterComplex += `${currentA}[${i+1}:a]acrossfade=d=${transitionDuration}[atemp${i}];`;
+            currentOffset = offset;
+          }
+          
+          currentV = `[vtemp${i}]`;
+          currentA = `[atemp${i}]`;
+        }
+        
+        filterComplex += `${currentV}null[v];${currentA}anull[a]`;
       }
-      filterComplex += `concat=n=${videos.length}:v=1:a=1[v][a]`;
 
       command = [
         ...inputs,
@@ -128,10 +169,11 @@ class FFmpegService {
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-c:a', 'aac',
+        '-pix_fmt', 'yuv420p',
         outputName
       ];
       
-      if (onLog) onLog('Starting concat with re-encoding and scaling (robust)');
+      if (onLog) onLog('Starting merge with transitions and re-encoding');
     }
 
     try {

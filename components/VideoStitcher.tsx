@@ -14,7 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { VideoFile, ProcessingState } from '../types';
+import { VideoFile, ProcessingState, TransitionType } from '../types';
 import { generateThumbnail, loadVideoFromFile } from '../services/videoUtils';
 import { ffmpegService } from '../services/ffmpegService';
 import Button from './ui/Button';
@@ -71,7 +71,11 @@ const VideoStitcher: React.FC = () => {
           thumbnail: thumb,
           duration,
           width,
-          height
+          height,
+          transition: {
+            type: TransitionType.NONE,
+            duration: 1
+          }
         });
       }
       setVideos(prev => [...prev, ...newFiles]);
@@ -97,6 +101,10 @@ const VideoStitcher: React.FC = () => {
 
   const handleRemove = (id: string) => {
     setVideos(prev => prev.filter(v => v.id !== id));
+  };
+
+  const handleUpdateTransition = (id: string, transition: { type: TransitionType, duration: number }) => {
+    setVideos(prev => prev.map(v => v.id === id ? { ...v, transition } : v));
   };
 
   const validateVideos = (): boolean => {
@@ -238,11 +246,13 @@ const VideoStitcher: React.FC = () => {
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-2 pb-20">
-                {videos.map((video) => (
+                {videos.map((video, index) => (
                   <SortableVideoItem 
                     key={video.id} 
                     video={video} 
                     onRemove={handleRemove} 
+                    onUpdateTransition={handleUpdateTransition}
+                    isLast={index === videos.length - 1}
                   />
                 ))}
               </div>

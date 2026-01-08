@@ -20,20 +20,45 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
     // Initialize Netlify Identity
     netlifyIdentity.init({
       locale: 'nl', // Set language to Dutch
+      APIUrl: 'https://videoforgemax.netlify.app/.netlify/identity' // Direct link for local testing
     });
 
-    // Check if there is already a logged-in user
-    const currentUser = netlifyIdentity.currentUser();
-    setUser(currentUser);
-    setIsInitialized(true);
+    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+    const checkAndExtendSession = () => {
+      const currentUser = netlifyIdentity.currentUser();
+      const expiry = localStorage.getItem('vf_session_expiry');
+      const now = Date.now();
+
+      if (currentUser) {
+        if (expiry && now > parseInt(expiry)) {
+          // Sessie is verlopen
+          netlifyIdentity.logout();
+          setUser(null);
+          localStorage.removeItem('vf_session_expiry');
+        } else {
+          // Sessie is nog geldig, verleng met een maand vanaf nu
+          localStorage.setItem('vf_session_expiry', (now + ONE_MONTH_MS).toString());
+          setUser(currentUser);
+        }
+      } else {
+        setUser(null);
+        localStorage.removeItem('vf_session_expiry');
+      }
+      setIsInitialized(true);
+    };
+
+    checkAndExtendSession();
 
     // Event listeners for login and logout
     netlifyIdentity.on('login', (user) => {
+      localStorage.setItem('vf_session_expiry', (Date.now() + ONE_MONTH_MS).toString());
       setUser(user);
       netlifyIdentity.close();
     });
 
     netlifyIdentity.on('logout', () => {
+      localStorage.removeItem('vf_session_expiry');
       setUser(null);
     });
 
