@@ -23,12 +23,12 @@ import { Plus, Film, Download, ArrowLeft, AlertCircle, Music, Scissors, Search, 
 
 // Vrij te gebruiken audio bestanden (CORS-vriendelijke bronnen via proxy)
 const FREE_AUDIO_LIBRARY = [
-  { id: '1', name: 'Inspiring Dreams', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2022/10/14/audio_9939f7510d.mp3')}`, author: 'Pixabay' },
-  { id: '2', name: 'Corporate Motivation', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2022/03/15/audio_50278917e7.mp3')}`, author: 'Pixabay' },
-  { id: '3', name: 'Happy Upbeat', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2022/11/22/audio_feb3768800.mp3')}`, author: 'Pixabay' },
-  { id: '4', name: 'Summer Travel', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2022/01/21/audio_31743c589f.mp3')}`, author: 'Pixabay' },
-  { id: '5', name: 'Lofi Chill', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2022/05/27/audio_180873748b.mp3')}`, author: 'Pixabay' },
-  { id: '6', name: 'Ambient Nature', url: `https://corsproxy.io/?${encodeURIComponent('https://cdn.pixabay.com/audio/2021/11/25/audio_91b123685e.mp3')}`, author: 'Pixabay' },
+  { id: '1', name: 'Inspiring Dreams', url: 'https://cdn.pixabay.com/audio/2022/10/14/audio_9939f7510d.mp3', author: 'Pixabay' },
+  { id: '2', name: 'Corporate Motivation', url: 'https://cdn.pixabay.com/audio/2022/03/15/audio_50278917e7.mp3', author: 'Pixabay' },
+  { id: '3', name: 'Happy Upbeat', url: 'https://cdn.pixabay.com/audio/2022/11/22/audio_feb3768800.mp3', author: 'Pixabay' },
+  { id: '4', name: 'Summer Travel', url: 'https://cdn.pixabay.com/audio/2022/01/21/audio_31743c589f.mp3', author: 'Pixabay' },
+  { id: '5', name: 'Lofi Chill', url: 'https://cdn.pixabay.com/audio/2022/05/27/audio_180873748b.mp3', author: 'Pixabay' },
+  { id: '6', name: 'Ambient Nature', url: 'https://cdn.pixabay.com/audio/2021/11/25/audio_91b123685e.mp3', author: 'Pixabay' },
 ];
 
 const VideoStitcher: React.FC = () => {
@@ -55,8 +55,7 @@ const VideoStitcher: React.FC = () => {
   // Hulpfunctie om CORS-problemen te omzeilen voor audiobestanden
   const getProxiedUrl = (url: string) => {
     if (!url) return '';
-    // We gebruiken corsproxy.io om de blokkade van Pixabay op localhost te omzeilen
-    return `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    return url;
   };
 
   const searchPixabayMusic = useCallback(async (query: string) => {
@@ -82,7 +81,7 @@ const VideoStitcher: React.FC = () => {
         setPixabayAudio(data.hits.map((hit: any) => ({
           id: hit.id.toString(),
           name: hit.title || 'Onbekend nummer',
-          url: getProxiedUrl(hit.audio),
+          url: hit.audio,
           author: hit.user || 'Pixabay Artiest',
           duration: hit.duration,
           tags: hit.tags
@@ -305,7 +304,7 @@ const VideoStitcher: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <audio 
                           id={`audio-${audio.id}`} 
-                          src={audio.url} 
+                          src={getProxiedUrl(audio.url)} 
                           preload="none" 
                           crossOrigin="anonymous"
                         />
@@ -336,7 +335,7 @@ const VideoStitcher: React.FC = () => {
                         </button>
                         <button 
                           onClick={() => {
-                            setBackgroundAudio(audio.url);
+                            setBackgroundAudio(getProxiedUrl(audio.url));
                             setBackgroundAudioName(audio.name);
                             setShowAudioPopup(false);
                           }}
