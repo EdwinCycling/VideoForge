@@ -157,6 +157,7 @@ const VideoStitcher: React.FC = () => {
             controls 
             className="w-full h-full object-contain" 
             playsInline
+            preload="auto"
           />
         </div>
 

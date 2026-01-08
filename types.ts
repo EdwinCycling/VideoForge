@@ -50,6 +50,7 @@ export enum AppTab {
   EXTRACTOR = 'extractor',
   STITCHER = 'stitcher',
   TRIMMER = 'trimmer',
+  WATERMARK_REMOVER = 'watermark_remover',
 }
 
 export interface ProcessingState {

@@ -168,6 +168,7 @@ const VideoTrimmer: React.FC = () => {
               className="w-full h-full object-contain"
               playsInline
               muted
+              preload="auto"
               // We don't autoplay, we let user control via slider mostly
             />
           )}

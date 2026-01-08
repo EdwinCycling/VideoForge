@@ -259,6 +259,55 @@ class FFmpegService {
 
     return URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
   }
+
+  async removeWatermark(
+    file: File,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onProgress: (ratio: number) => void,
+    onLog?: (text: string) => void
+  ): Promise<string> {
+    if (!this.ffmpeg || !this.loaded) {
+      await this.load();
+    }
+    const ffmpeg = this.ffmpeg!;
+    const inputName = 'watermark_input.mp4';
+    const outputName = 'watermark_output.mp4';
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    ffmpeg.on('progress', ({ progress }) => {
+      onProgress(Math.max(0, Math.min(100, progress * 100)));
+    });
+
+    if (onLog) onLog(`Starting watermark removal at x=${x}, y=${y}, w=${width}, h=${height}`);
+
+    // The delogo filter: x, y, w, h are the coordinates and size
+    // show=0 means it will actually remove it (show=1 would show a green box for testing)
+    const filter = `delogo=x=${x}:y=${y}:w=${width}:h=${height}:show=0`;
+
+    const command = [
+      '-i', inputName,
+      '-vf', filter,
+      '-c:a', 'copy', // Keep audio as is
+      outputName
+    ];
+
+    try {
+      await ffmpeg.exec(command);
+    } catch (e) {
+      console.error(e);
+      throw new Error("Watermark removal failed.");
+    }
+
+    const data = await ffmpeg.readFile(outputName);
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+
+    return URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
+  }
 }
 
 export const ffmpegService = new FFmpegService();
