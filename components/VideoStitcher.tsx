@@ -536,7 +536,7 @@ const VideoStitcher: React.FC = () => {
           <Button 
             variant="secondary" 
             fullWidth 
-            onClick={() => setShowAudioPopup(true)}
+            onClick={() => setStatus(prev => ({ ...prev, error: 'De audio functionaliteit is momenteel "Work in Progress". We werken eraan om dit snel weer beschikbaar te maken!' }))}
             icon={<Music size={20} />}
           >
             Audio
@@ -556,7 +556,7 @@ const VideoStitcher: React.FC = () => {
         )}
       </div>
 
-      {renderAudioPopup()}
+      {/* {renderAudioPopup()} */}
     </div>
   );
 };
