@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Image as ImageIcon, Film, Scissors, Eraser } from 'lucide-react';
+import { Image as ImageIcon, Film, Scissors, Frame } from 'lucide-react';
 import FrameExtractor from './components/FrameExtractor';
 import VideoStitcher from './components/VideoStitcher';
 import VideoTrimmer from './components/VideoTrimmer';
-import WatermarkRemover from './components/WatermarkRemover';
+import VideoSilhouette from './components/WatermarkRemover'; // We kept the filename for now to avoid breaking imports
 import AuthWrapper from './components/AuthWrapper';
 import { AppTab } from './types';
 
@@ -38,7 +38,7 @@ const App: React.FC = () => {
              <VideoTrimmer />
           </div>
           <div className={`absolute inset-0 transition-opacity duration-300 ${activeTab === AppTab.WATERMARK_REMOVER ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-             <WatermarkRemover />
+             <VideoSilhouette />
           </div>
         </main>
 
@@ -72,8 +72,8 @@ const App: React.FC = () => {
             onClick={() => setActiveTab(AppTab.WATERMARK_REMOVER)}
             className={`flex flex-col items-center gap-1 p-2 rounded-2xl transition-all w-20 ${activeTab === AppTab.WATERMARK_REMOVER ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Eraser size={22} strokeWidth={activeTab === AppTab.WATERMARK_REMOVER ? 2.5 : 2} />
-            <span className="text-[10px] font-medium">Remover</span>
+            <Frame size={22} strokeWidth={activeTab === AppTab.WATERMARK_REMOVER ? 2.5 : 2} />
+            <span className="text-[10px] font-medium">Silhouet</span>
           </button>
         </nav>
       </div>

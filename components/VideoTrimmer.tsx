@@ -169,6 +169,7 @@ const VideoTrimmer: React.FC = () => {
               playsInline
               muted
               preload="auto"
+              crossOrigin="anonymous"
               // We don't autoplay, we let user control via slider mostly
             />
           )}

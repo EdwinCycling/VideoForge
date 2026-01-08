@@ -18,10 +18,15 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
 
   useEffect(() => {
     // Initialize Netlify Identity
-    netlifyIdentity.init({
-      locale: 'nl', // Set language to Dutch
-      APIUrl: 'https://videoforgemax.netlify.app/.netlify/identity' // Direct link for local testing
-    });
+    try {
+      // @ts-ignore
+      netlifyIdentity.init({
+        locale: 'nl', // Set language to Dutch
+        APIUrl: 'https://videoforgemax.netlify.app/.netlify/identity' // Direct link for local testing
+      });
+    } catch (error) {
+      console.warn("Netlify Identity init failed:", error);
+    }
 
     const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 

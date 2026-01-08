@@ -42,7 +42,8 @@ class FFmpegService {
   async stitchVideos(
     videos: VideoFile[],
     onProgress: (ratio: number) => void,
-    onLog?: (text: string) => void
+    onLog?: (text: string) => void,
+    backgroundAudio?: File | string // Added background audio support
   ): Promise<string> {
     if (!this.ffmpeg || !this.loaded) {
       await this.load();
@@ -66,12 +67,18 @@ class FFmpegService {
       v.width !== targetW || 
       v.height !== targetH || 
       v.file.type !== mime
-    );
+    ) || !!backgroundAudio; // Re-encode if we have background audio
 
     for (let i = 0; i < videos.length; i++) {
       const name = `input${i}.${ext}`;
       inputNames.push(name);
       await ffmpeg.writeFile(name, await fetchFile(videos[i].file));
+    }
+
+    let audioInputName = '';
+    if (backgroundAudio) {
+      audioInputName = 'background_audio.mp3';
+      await ffmpeg.writeFile(audioInputName, await fetchFile(backgroundAudio));
     }
     
     if (onLog) onLog(`Prepared ${videos.length} inputs. Re-encode: ${needsReencode}`);
@@ -88,7 +95,7 @@ class FFmpegService {
 
     const hasTransitions = videos.some(v => v.transition && v.transition.type !== 'none');
 
-    if (!needsReencode && !hasTransitions) {
+    if (!needsReencode && !hasTransitions && !backgroundAudio) {
       // FAST PATH: Concat Demuxer with Stream Copy
       let concatList = '';
       for (let i = 0; i < inputNames.length; i++) {
@@ -117,12 +124,27 @@ class FFmpegService {
         filterComplex += `[${i}:v]scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v${i}];`;
       }
 
+      if (backgroundAudio) {
+        inputs.push('-i', audioInputName);
+      }
+
       if (!hasTransitions) {
         // Simple concat without transitions
         for (let i = 0; i < videos.length; i++) {
-          filterComplex += `[v${i}][${i}:a]`;
+          filterComplex += `[v${i}]`;
         }
-        filterComplex += `concat=n=${videos.length}:v=1:a=1[v][a]`;
+        filterComplex += `concat=n=${videos.length}:v=1:a=0[v];`;
+        
+        if (backgroundAudio) {
+           // Use background audio, ignore video audio
+           filterComplex += `[${videos.length}:a]anull[a]`;
+        } else {
+           // Concat original audio
+           for (let i = 0; i < videos.length; i++) {
+             filterComplex += `[${i}:a]`;
+           }
+           filterComplex += `concat=n=${videos.length}:v=0:a=1[a]`;
+        }
       } else {
         // Complex xfade logic
         let currentV = '[v0]';
@@ -141,7 +163,9 @@ class FFmpegService {
           if (trans.type === 'none' || transitionDuration <= 0) {
             // No transition: use concat
             filterComplex += `${currentV}[v${i+1}]concat=n=2:v=1:a=0[vtemp${i}];`;
-            filterComplex += `${currentA}[${i+1}:a]concat=n=2:v=0:a=1[atemp${i}];`;
+            if (!backgroundAudio) {
+              filterComplex += `${currentA}[${i+1}:a]concat=n=2:v=0:a=1[atemp${i}];`;
+            }
             currentOffset += v1.duration;
           } else {
             // Map our transition types to ffmpeg names
@@ -150,15 +174,23 @@ class FFmpegService {
             if (ffmpegTrans === 'slidert') ffmpegTrans = 'slideright';
             
             filterComplex += `${currentV}[v${i+1}]xfade=transition=${ffmpegTrans}:duration=${transitionDuration}:offset=${offset}[vtemp${i}];`;
-            filterComplex += `${currentA}[${i+1}:a]acrossfade=d=${transitionDuration}[atemp${i}];`;
+            if (!backgroundAudio) {
+              filterComplex += `${currentA}[${i+1}:a]acrossfade=d=${transitionDuration}[atemp${i}];`;
+            }
             currentOffset = offset;
           }
           
           currentV = `[vtemp${i}]`;
-          currentA = `[atemp${i}]`;
+          if (!backgroundAudio) {
+            currentA = `[atemp${i}]`;
+          }
         }
         
-        filterComplex += `${currentV}null[v];${currentA}anull[a]`;
+        if (backgroundAudio) {
+          filterComplex += `${currentV}null[v];[${videos.length}:a]anull[a]`;
+        } else {
+          filterComplex += `${currentV}null[v];${currentA}anull[a]`;
+        }
       }
 
       command = [
@@ -170,6 +202,7 @@ class FFmpegService {
         '-preset', 'ultrafast',
         '-c:a', 'aac',
         '-pix_fmt', 'yuv420p',
+        '-shortest', // Ensure video ends when the shortest stream (usually audio/video) ends
         outputName
       ];
       
@@ -203,12 +236,115 @@ class FFmpegService {
     for (const name of inputNames) {
       try { await ffmpeg.deleteFile(name); } catch(e) {}
     }
-    if (!needsReencode) {
+    if (audioInputName) {
+      try { await ffmpeg.deleteFile(audioInputName); } catch(e) {}
+    }
+    if (!needsReencode && !backgroundAudio) {
       try { await ffmpeg.deleteFile('filelist.txt'); } catch(e) {}
     }
     try { await ffmpeg.deleteFile(outputName); } catch(e) {}
 
-    return URL.createObjectURL(new Blob([data], { type: mime }));
+    if (typeof data === 'string') {
+      throw new Error('FFmpeg read file returned a string instead of binary data');
+    }
+
+    // Create a new Blob with the data and mime type
+    // We use a specific array buffer to ensure the browser treats it as a full file
+    const blob = new Blob([data.buffer], { type: mime });
+    return URL.createObjectURL(blob);
+  }
+
+  async extractAudio(file: File, onProgress: (ratio: number) => void): Promise<string> {
+    if (!this.ffmpeg || !this.loaded) {
+      await this.load();
+    }
+    const ffmpeg = this.ffmpeg!;
+    const inputName = 'audio_input.mp4';
+    const outputName = 'extracted_audio.mp3';
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    ffmpeg.on('progress', ({ progress }) => {
+      onProgress(Math.max(0, Math.min(100, progress * 100)));
+    });
+
+    const command = [
+      '-i', inputName,
+      '-vn', // Disable video
+      '-acodec', 'libmp3lame',
+      outputName
+    ];
+
+    try {
+      await ffmpeg.exec([...command, '-y']);
+      const data = await ffmpeg.readFile(outputName);
+      
+      // Cleanup
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+
+      const blob = new Blob([(data as any).buffer], { type: 'audio/mp3' });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.error(e);
+      throw new Error("Audio extraction failed.");
+    }
+  }
+
+  async applySilhouette(
+    file: File,
+    options: { type: 'rect' | 'cinema', size: number, color: string },
+    onProgress: (ratio: number) => void
+  ): Promise<string> {
+    if (!this.ffmpeg || !this.loaded) {
+      await this.load();
+    }
+    const ffmpeg = this.ffmpeg!;
+    const inputName = 'silhouette_input.mp4';
+    const outputName = 'silhouette_output.mp4';
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    ffmpeg.on('progress', ({ progress }) => {
+      onProgress(Math.max(0, Math.min(100, progress * 100)));
+    });
+
+    let filter = '';
+    
+    // Convert hex color to ffmpeg color format (0xRRGGBB)
+    const color = options.color.replace('#', '0x');
+
+    if (options.type === 'rect') {
+       // drawbox draws INSIDE the video
+       // t is thickness, size * 5 for a decent scale
+       const thickness = options.size * 5;
+       filter = `drawbox=x=0:y=0:w=iw:h=ih:color=${color}:t=${thickness}`;
+    } else if (options.type === 'cinema') {
+       // Two boxes at top and bottom
+       const boxHeight = options.size * 5;
+       filter = `drawbox=y=0:w=iw:h=${boxHeight}:color=${color}:t=fill,drawbox=y=ih-${boxHeight}:w=iw:h=${boxHeight}:color=${color}:t=fill`;
+    }
+
+    const command = [
+      '-i', inputName,
+      '-vf', filter,
+      '-c:a', 'copy', // Copy audio without re-encoding
+      outputName
+    ];
+
+    try {
+      await ffmpeg.exec([...command, '-y']);
+      const data = await ffmpeg.readFile(outputName);
+      
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+
+      const blob = new Blob([(data as any).buffer], { type: 'video/mp4' });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.error(e);
+      throw new Error("Silhouette application failed.");
+    }
   }
 
   async trimVideo(
@@ -257,7 +393,12 @@ class FFmpegService {
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
-    return URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
+    if (typeof data === 'string') {
+      throw new Error('FFmpeg read file returned a string instead of binary data');
+    }
+
+    const blob = new Blob([data.buffer], { type: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2' });
+    return URL.createObjectURL(blob);
   }
 
   async removeWatermark(
@@ -267,7 +408,9 @@ class FFmpegService {
     width: number,
     height: number,
     onProgress: (ratio: number) => void,
-    onLog?: (text: string) => void
+    onLog?: (text: string) => void,
+    duration?: number,
+    band: number = 1
   ): Promise<string> {
     if (!this.ffmpeg || !this.loaded) {
       await this.load();
@@ -282,7 +425,7 @@ class FFmpegService {
       onProgress(Math.max(0, Math.min(100, progress * 100)));
     });
 
-    if (onLog) onLog(`Starting watermark removal at x=${x}, y=${y}, w=${width}, h=${height}`);
+    if (onLog) onLog(`Starting watermark removal at x=${x}, y=${y}, w=${width}, h=${height}${duration ? ` (Test: ${duration}s)` : ''}, band=${band}`);
 
     // The delogo filter: x, y, w, h are the coordinates and size
     // show=0 means it will actually remove it (show=1 would show a green box for testing)
@@ -292,8 +435,13 @@ class FFmpegService {
       '-i', inputName,
       '-vf', filter,
       '-c:a', 'copy', // Keep audio as is
-      outputName
     ];
+
+    if (duration) {
+      command.push('-t', duration.toString());
+    }
+
+    command.push(outputName);
 
     try {
       await ffmpeg.exec(command);
@@ -306,7 +454,172 @@ class FFmpegService {
     await ffmpeg.deleteFile(inputName);
     await ffmpeg.deleteFile(outputName);
 
-    return URL.createObjectURL(new Blob([data], { type: 'video/mp4' }));
+    if (typeof data === 'string') {
+      throw new Error('FFmpeg read file returned a string instead of binary data');
+    }
+
+    const blob = new Blob([data.buffer], { type: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2' });
+    return URL.createObjectURL(blob);
+  }
+
+  async getPreviewFrame(
+    file: File,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    time: number,
+    mode: 'remove' | 'crop',
+    band: number = 1
+  ): Promise<string> {
+    if (!this.ffmpeg || !this.loaded) {
+      await this.load();
+    }
+    const ffmpeg = this.ffmpeg!;
+    const inputName = 'preview_input.mp4';
+    const outputName = 'preview_frame.jpg';
+
+    // Log FFmpeg output for debugging
+    const logCallback = ({ message }: { message: string }) => {
+      console.log(`[FFmpeg Preview] ${message}`);
+      
+      // Check for buffer reallocation errors and handle them gracefully
+      if (message.includes('Buffer reallocation failed')) {
+        console.warn('[FFmpeg Preview] Buffer reallocation error detected - attempting fallback');
+        throw new Error('BUFFER_REALLOCATION_FAILED');
+      }
+    };
+    ffmpeg.on('log', logCallback);
+
+    try {
+      await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+      let filter = '';
+      if (mode === 'remove') {
+        filter = `delogo=x=${x}:y=${y}:w=${width}:h=${height}:show=0`;
+      } else {
+        filter = `crop=${width}:${height}:${x}:${y}`;
+      }
+
+      // Extract one frame at 'time', apply filter, and save as JPG
+      // Ensure time is formatted correctly (though toString usually works)
+      const command = [
+        '-ss', time.toFixed(3),
+        '-i', inputName,
+        '-vf', filter,
+        '-frames:v', '1',
+        '-q:v', '2',
+        outputName
+      ];
+
+      const ret = await ffmpeg.exec(command);
+      if (ret !== 0) {
+        throw new Error(`FFmpeg exited with code ${ret}`);
+      }
+
+      const data = await ffmpeg.readFile(outputName);
+      
+      await ffmpeg.deleteFile(inputName);
+      await ffmpeg.deleteFile(outputName);
+
+      if (typeof data === 'string') {
+        throw new Error('FFmpeg read file returned a string instead of binary data');
+      }
+
+      const blob = new Blob([data.buffer], { type: 'image/jpeg' });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.error("[FFmpeg Preview Error]", e);
+      
+      // Handle specific buffer reallocation error with fallback
+      if (e instanceof Error && e.message === 'BUFFER_REALLOCATION_FAILED') {
+        console.warn('[FFmpeg Preview] Using fallback method due to buffer reallocation error');
+        
+        // Fallback: try without filter first, then apply filter separately if needed
+        try {
+          await ffmpeg.deleteFile(inputName);
+          await ffmpeg.writeFile(inputName, await fetchFile(file));
+          
+          const fallbackCommand = [
+            '-ss', time.toFixed(3),
+            '-i', inputName,
+            '-frames:v', '1',
+            '-q:v', '2',
+            outputName
+          ];
+          
+          const fallbackRet = await ffmpeg.exec(fallbackCommand);
+          if (fallbackRet === 0) {
+            const data = await ffmpeg.readFile(outputName);
+            await ffmpeg.deleteFile(inputName);
+            await ffmpeg.deleteFile(outputName);
+            
+            if (typeof data === 'string') {
+              throw new Error('FFmpeg read file returned string data');
+            }
+            
+            const blob = new Blob([data.buffer], { type: 'image/jpeg' });
+            return URL.createObjectURL(blob);
+          }
+        } catch (fallbackError) {
+          console.error('[FFmpeg Preview] Fallback also failed:', fallbackError);
+        }
+        
+        // If all else fails, throw a more user-friendly error
+        throw new Error('Preview generation failed due to video format limitations. Try a different video or time position.');
+      }
+      
+      // Clean up files if they exist
+      try { await ffmpeg.deleteFile(inputName); } catch {}
+      try { await ffmpeg.deleteFile(outputName); } catch {}
+      throw e;
+    } finally {
+      ffmpeg.off('log', logCallback);
+    }
+  }
+
+  async cropVideo(
+    file: File,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    onProgress: (ratio: number) => void,
+    onLog?: (text: string) => void
+  ): Promise<string> {
+    if (!this.ffmpeg || !this.loaded) {
+      await this.load();
+    }
+    const ffmpeg = this.ffmpeg!;
+    const inputName = 'crop_input.mp4';
+    const outputName = 'crop_output.mp4';
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // ffmpeg -i input.mp4 -vf "crop=w:h:x:y" output.mp4
+    const filter = `crop=${width}:${height}:${x}:${y}`;
+
+    if (onLog) onLog(`Starting crop at x=${x}, y=${y}, w=${width}, h=${height}`);
+
+    const command = [
+      '-i', inputName,
+      '-vf', filter,
+      '-c:a', 'copy',
+      outputName
+    ];
+
+    await ffmpeg.exec(command);
+
+    const data = await ffmpeg.readFile(outputName);
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+
+    if (typeof data === 'string') {
+      throw new Error('FFmpeg read file returned a string instead of binary data');
+    }
+
+    const blob = new Blob([data.buffer], { type: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2' });
+    return URL.createObjectURL(blob);
   }
 }
 

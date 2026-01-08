@@ -1,17 +1,18 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Trash2, GripVertical, Settings2 } from 'lucide-react';
+import { Trash2, GripVertical, Settings2, Scissors, Music } from 'lucide-react';
 import { VideoFile, TransitionType } from '../types';
 
 interface Props {
   video: VideoFile;
   onRemove: (id: string) => void;
   onUpdateTransition: (id: string, transition: { type: TransitionType, duration: number }) => void;
+  onExtractAudio?: (video: VideoFile) => void;
   isLast?: boolean;
 }
 
-const SortableVideoItem: React.FC<Props> = ({ video, onRemove, onUpdateTransition, isLast }) => {
+const SortableVideoItem: React.FC<Props> = ({ video, onRemove, onUpdateTransition, onExtractAudio, isLast }) => {
   const {
     attributes,
     listeners,
@@ -58,9 +59,21 @@ const SortableVideoItem: React.FC<Props> = ({ video, onRemove, onUpdateTransitio
           <p className="text-sm font-medium truncate text-slate-200">
             {video.file.name}
           </p>
-          <p className="text-xs text-slate-500">
-            {(video.file.size / (1024 * 1024)).toFixed(1)} MB
-          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-slate-500">
+              {(video.file.size / (1024 * 1024)).toFixed(1)} MB
+            </p>
+            {onExtractAudio && (
+              <button 
+                onClick={() => onExtractAudio(video)}
+                className="flex items-center gap-1 text-[10px] bg-slate-700 hover:bg-slate-600 text-indigo-300 px-1.5 py-0.5 rounded transition-colors uppercase font-bold tracking-wide"
+                title="Audio uit video halen"
+              >
+                <Music size={10} />
+                <span>Audio</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <button 
