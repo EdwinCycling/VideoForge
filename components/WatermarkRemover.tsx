@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Eraser, Upload, Download, ArrowLeft, AlertCircle, Maximize2 } from 'lucide-react';
+import { Eraser, Upload, Download, ArrowLeft, AlertCircle, Maximize2, Minimize2, X } from 'lucide-react';
 import { ffmpegService } from '../services/ffmpegService';
 import { ProcessingState } from '../types';
 import Button from './ui/Button';
@@ -14,6 +14,8 @@ const WatermarkRemover: React.FC = () => {
     message: '',
     error: null
   });
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Area state (in percentages for UI, will convert to pixels for FFmpeg)
   const [area, setArea] = useState(() => {
@@ -140,6 +142,15 @@ const WatermarkRemover: React.FC = () => {
               className="w-full h-full object-contain pointer-events-none"
             />
             
+            {/* Fullscreen Toggle Button */}
+            <button 
+              onClick={() => setIsFullscreen(true)}
+              className="absolute top-4 right-4 z-10 p-2 bg-slate-900/80 hover:bg-slate-800 text-white rounded-xl transition-all border border-slate-700/50 backdrop-blur-md group"
+              title="Volledig scherm voor precisie"
+            >
+              <Maximize2 size={20} className="group-hover:scale-110 transition-transform" />
+            </button>
+            
             {/* Selection Overlay */}
             <div 
               className="absolute border-2 border-red-500 bg-red-500/20 pointer-events-none shadow-[0_0_15px_rgba(239,68,68,0.5)]"
@@ -230,6 +241,122 @@ const WatermarkRemover: React.FC = () => {
         <div className="bg-red-900/40 border border-red-500/50 p-4 rounded-2xl text-red-200 text-sm flex items-start gap-3">
           <AlertCircle className="shrink-0 mt-0.5 text-red-400" size={20} />
           <p>{status.error}</p>
+        </div>
+      )}
+
+      {/* Fullscreen Precision Editor */}
+      {isFullscreen && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in zoom-in duration-200">
+          <div className="flex items-center justify-between p-4 bg-slate-900/80 border-b border-slate-800 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
+                <Maximize2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-white font-bold">Precisie Editor</h3>
+                <p className="text-slate-400 text-xs uppercase tracking-wider">Stel de marker heel nauwkeurig in</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setIsFullscreen(false)}
+              className="p-3 bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-300 rounded-xl transition-all"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+            <video 
+              src={videoUrl || ''} 
+              playsInline
+              preload="auto"
+              className="max-w-full max-h-full object-contain pointer-events-none"
+            />
+            
+            {/* Selection Overlay (Larger in fullscreen) */}
+            <div 
+              className="absolute border-2 border-red-500 bg-red-500/30 pointer-events-none shadow-[0_0_30px_rgba(239,68,68,0.6)]"
+              style={{
+                left: `${area.x}%`,
+                top: `${area.y}%`,
+                width: `${area.width}%`,
+                height: `${area.height}%`,
+              }}
+            >
+              <div className="absolute -top-8 left-0 bg-red-500 text-white text-xs px-3 py-1 rounded-md font-bold uppercase tracking-widest shadow-lg">
+                Watermerk Gebied
+              </div>
+              {/* Corner indicators for visual aid */}
+              <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-white"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-white"></div>
+              <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-white"></div>
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-white"></div>
+            </div>
+          </div>
+
+          <div className="p-8 bg-slate-900/90 border-t border-slate-800 backdrop-blur-xl">
+            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Maximize2 size={12} /> Horizontale Positie (X): <span className="text-indigo-400">{area.x}%</span>
+                    </span>
+                  </div>
+                  <input 
+                    type="range" min="0" max={100 - area.width} value={area.x}
+                    onChange={(e) => setArea({ ...area, x: parseInt(e.target.value) })}
+                    className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Maximize2 size={12} className="rotate-90" /> Verticale Positie (Y): <span className="text-indigo-400">{area.y}%</span>
+                    </span>
+                  </div>
+                  <input 
+                    type="range" min="0" max={100 - area.height} value={area.y}
+                    onChange={(e) => setArea({ ...area, y: parseInt(e.target.value) })}
+                    className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Breedte: <span className="text-indigo-400">{area.width}%</span></span>
+                  </div>
+                  <input 
+                    type="range" min="1" max={100 - area.x} value={area.width}
+                    onChange={(e) => setArea({ ...area, width: parseInt(e.target.value) })}
+                    className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Hoogte: <span className="text-indigo-400">{area.height}%</span></span>
+                  </div>
+                  <input 
+                    type="range" min="1" max={100 - area.y} value={area.height}
+                    onChange={(e) => setArea({ ...area, height: parseInt(e.target.value) })}
+                    className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-8 flex justify-center">
+               <Button 
+                variant="primary" 
+                onClick={() => setIsFullscreen(false)}
+                className="px-12 py-3 text-lg"
+                icon={<Minimize2 size={24} />}
+              >
+                Klaar met instellen
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
